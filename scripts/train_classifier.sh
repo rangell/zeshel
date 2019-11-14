@@ -1,15 +1,15 @@
-BERT_BASE_DIR=uncased_L-12_H-768_A-12
-EXPTS_DIR=/tmp
-TFRecords=/tmp/TFRecords/mentions/train
+BERT_BASE_DIR=${STORAGE_BUCKET}/uncased_L-12_H-768_A-12
+EXPTS_DIR=${STORAGE_BUCKET}/tmp # STORAGE_BUCKET=gs://linking-data
+TFRecords=${STORAGE_BUCKET}/tmp/TFRecords/mentions/train
 USE_TPU=true
-TPU_NAME=tpu0
+TPU_NAME=rangell
 
 EXP_NAME=BERT_fntn
 INIT=$BERT_BASE_DIR/bert_model.ckpt 
 
 python run_classifier.py \
   --do_train=true \
-  --do_eval=false \
+  --do_eval=true \
   --data_dir=$TFRecords \
   --vocab_file=$BERT_BASE_DIR/vocab.txt \
   --bert_config_file=$BERT_BASE_DIR/bert_config.json \
