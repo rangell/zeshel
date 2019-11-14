@@ -1,0 +1,5 @@
+bert/
+tmp/
+
+.*.swo
+.*.swp
