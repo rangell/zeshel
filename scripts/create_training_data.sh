@@ -1,9 +1,9 @@
-BERT_BASE_DIR=uncased_L-12_H-768_A-12
+BERT_BASE_DIR=${STORAGE_BUCKET}/uncased_L-12_H-768_A-12
 
 MENTIONS=$ZESHEL_DATA/mentions
 DOCUMENTS=$ZESHEL_DATA/documents
 TFIDF_CANDIDATES=$ZESHEL_DATA/tfidf_candidates
-OUTPUT_DIR=/tmp/TFRecords/mentions
+OUTPUT_DIR=${STORAGE_BUCKET}/tmp/TFRecords/mentions
 
 train_domains=("american_football" "doctor_who" "fallout" "final_fantasy" "military" "pro_wrestling" "starwars" "world_of_warcraft")
 val_domains=("coronation_street" "elder_scrolls" "ice_hockey" "muppets")
