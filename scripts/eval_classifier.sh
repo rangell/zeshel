@@ -1,10 +1,11 @@
-BERT_BASE_DIR=uncased_L-12_H-768_A-12
-EXPTS_DIR=/tmp
-TFRecords=/tmp/TFRecords/mentions
+STORAGE_BUCKET=gs://linking-data
+BERT_BASE_DIR=${STORAGE_BUCKET}/uncased_L-12_H-768_A-12
+EXPTS_DIR=${STORAGE_BUCKET}/tmp
+TFRecords=${STORAGE_BUCKET}/tmp/TFRecords/mentions
 USE_TPU=true
-TPU_NAME=tpu0
+TPU_NAME=rangell
 
-domain='test/forgotten_realms'
+domain='test/star_trek'
 
 EXP_NAME=BERT_fntn
 

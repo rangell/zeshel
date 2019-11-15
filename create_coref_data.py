@@ -25,6 +25,9 @@ import random
 import tensorflow as tf
 from bert import tokenization
 
+from IPython import embed
+
+
 flags = tf.flags
 
 FLAGS = flags.FLAGS
@@ -96,6 +99,7 @@ class TrainingInstance(object):
     s += "label_id: %d\n" % self.label_id
     s += "\n"
     return s
+
 
 
 def write_instance_to_example_files(instances, tokenizer, max_seq_length,
@@ -281,7 +285,7 @@ def create_instances_from_document(
     vocab_words, rng, is_training=True):
   """Creates `TrainingInstance`s for a single document."""
 
-  # Account for [CLS], [SEP], [SEP]
+  # Account for [CLS], [SEP]
   max_num_tokens = max_seq_length - 3
 
   mention_length = int(max_num_tokens/2)
