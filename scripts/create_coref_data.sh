@@ -1,10 +1,11 @@
+STORAGE_BUCKET=.
 BERT_BASE_DIR=${STORAGE_BUCKET}/uncased_L-12_H-768_A-12
 
 ZESHEL_DATA=${STORAGE_BUCKET}/data
 MENTIONS=${ZESHEL_DATA}/mentions
 DOCUMENTS=${ZESHEL_DATA}/documents
 TFIDF_CANDIDATES=${ZESHEL_DATA}/tfidf_candidates
-OUTPUT_DIR=${STORAGE_BUCKET}/tmp/TFRecords/mentions
+OUTPUT_DIR=${STORAGE_BUCKET}/tmp/TFRecords/coref_mentions
 
 train_domains=("american_football" "doctor_who" "fallout" "final_fantasy" "military" "pro_wrestling" "starwars" "world_of_warcraft")
 val_domains=("coronation_street" "elder_scrolls" "ice_hockey" "muppets")
@@ -20,18 +21,17 @@ concat() {
 train_documents="$(concat ${train_domains[@]})"
 val_documents="$(concat ${val_domains[@]})"
 test_documents="$(concat ${test_domains[@]})"
-
  
 mkdir -p $OUTPUT_DIR/{train,val,test}
 
-python3 create_coref_data.py \
-  --documents_file=$train_documents \
-  --mentions_file=$MENTIONS/train.json \
-	--tfidf_candidates_file=$TFIDF_CANDIDATES/train.json \
-  --output_file=$OUTPUT_DIR/train/train.tfrecord \
-  --vocab_file=$BERT_BASE_DIR/vocab.txt \
+python create_coref_data.py \
+  --documents_file=${train_documents} \
+  --mentions_file=${MENTIONS}/train.json \
+  --tfidf_candidates_file=${TFIDF_CANDIDATES}/train.json \
+  --output_file=${OUTPUT_DIR}/train/train.tfrecord \
+  --vocab_file=${BERT_BASE_DIR}/vocab.txt \
   --do_lower_case=True \
-  --max_seq_length=256 \
+  --max_seq_length=128 \
   --is_training=True \
   --random_seed=12345
 
@@ -49,7 +49,8 @@ python3 create_coref_data.py \
   --output_file=$OUTPUT_DIR/train/${split}.tfrecord \
   --vocab_file=$BERT_BASE_DIR/vocab.txt \
   --do_lower_case=True \
-  --max_seq_length=256 \
+  --max_seq_length=128 \
+  --num_cands=16 \
   --is_training=True \
   --random_seed=12345 &
 done
@@ -63,7 +64,8 @@ python3 create_coref_data.py \
   --output_file=$OUTPUT_DIR/val \
   --vocab_file=$BERT_BASE_DIR/vocab.txt \
   --do_lower_case=True \
-  --max_seq_length=256 \
+  --max_seq_length=128 \
+  --num_cands=16 \
   --is_training=False \
 	--split_by_domain=True \
   --random_seed=12345 &
@@ -77,7 +79,8 @@ python3 create_coref_data.py \
   --output_file=$OUTPUT_DIR/test \
   --vocab_file=$BERT_BASE_DIR/vocab.txt \
   --do_lower_case=True \
-  --max_seq_length=256 \
+  --max_seq_length=128 \
+  --num_cands=16 \
   --is_training=False \
 	--split_by_domain=True \
   --random_seed=12345 &
