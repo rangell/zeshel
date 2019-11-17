@@ -144,7 +144,7 @@ def file_based_input_fn_builder(input_file, num_cands, seq_length, is_training,
       "input_mask": tf.FixedLenFeature([num_cands, seq_length], tf.int64),
       "segment_ids": tf.FixedLenFeature([num_cands, seq_length], tf.int64),
       "mention_id": tf.FixedLenFeature([num_cands, seq_length], tf.int64),
-      "label_id": tf.FixedLenFeature([], tf.int64),
+      "uid": tf.FixedLenFeature([], tf.int64),
   }
 
   def _decode_record(record, name_to_features):

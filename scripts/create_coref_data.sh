@@ -24,25 +24,27 @@ test_documents="$(concat ${test_domains[@]})"
  
 mkdir -p $OUTPUT_DIR/{train,val,test}
 
-python create_coref_data.py \
-  --documents_file=${train_documents} \
-  --mentions_file=${MENTIONS}/train.json \
-  --tfidf_candidates_file=${TFIDF_CANDIDATES}/train.json \
-  --output_file=${OUTPUT_DIR}/train/train.tfrecord \
-  --vocab_file=${BERT_BASE_DIR}/vocab.txt \
-  --do_lower_case=True \
-  --max_seq_length=128 \
-  --is_training=True \
-  --random_seed=12345
-
-exit
+#python create_coref_data.py \
+#  --documents_file=${val_documents} \
+#  --mentions_file=${MENTIONS}/val.json \
+#  --tfidf_candidates_file=${TFIDF_CANDIDATES}/val.json \
+#  --output_file=${OUTPUT_DIR}/val \
+#  --vocab_file=${BERT_BASE_DIR}/vocab.txt \
+#  --do_lower_case=True \
+#  --max_seq_length=128 \
+#  --num_cands=16 \
+#  --is_training=False \
+#  --split_by_domain=True \
+#  --random_seed=12345
+#
+#exit
 
 
 ###############################################################################
 
 for split in train heldout_train_seen heldout_train_unseen; do
 
-python3 create_coref_data.py \
+python create_coref_data.py \
   --documents_file=$train_documents \
   --mentions_file=$MENTIONS/${split}.json \
 	--tfidf_candidates_file=$TFIDF_CANDIDATES/${split}.json \
@@ -57,7 +59,7 @@ done
 
 split="val"
 
-python3 create_coref_data.py \
+python create_coref_data.py \
   --documents_file=$val_documents \
   --mentions_file=$MENTIONS/${split}.json \
 	--tfidf_candidates_file=$TFIDF_CANDIDATES/${split}.json \
@@ -72,7 +74,7 @@ python3 create_coref_data.py \
 
 split="test"
 
-python3 create_coref_data.py \
+python create_coref_data.py \
   --documents_file=$test_documents \
   --mentions_file=$MENTIONS/${split}.json \
  	--tfidf_candidates_file=$TFIDF_CANDIDATES/${split}.json \

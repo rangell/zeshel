@@ -145,6 +145,8 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     features["input_mask"] = create_int_feature(input_mask)
     features["segment_ids"] = create_int_feature(segment_ids)
     features["mention_id"] = create_int_feature(mention_id)
+    features["uid"] = tf.train.Feature(bytes_list=tf.train.BytesList(
+        value=[bytes(instance.mention["mention_id"], "utf-8")]))
 
     tf_example = tf.train.Example(features=tf.train.Features(feature=features))
 
@@ -153,20 +155,20 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
 
     total_written += 1
 
-    if inst_index < 20:
-      tf.logging.info("*** Example ***")
-      tf.logging.info("tokens: %s" % " ".join(
-          [tokenization.printable_text(x) for x in instance.tokens[:FLAGS.max_seq_length]]))
+    #if inst_index < 20:
+    #  tf.logging.info("*** Example ***")
+    #  tf.logging.info("tokens: %s" % " ".join(
+    #      [tokenization.printable_text(x) for x in instance.tokens[:FLAGS.max_seq_length]]))
 
-      for feature_name in features.keys():
-        feature = features[feature_name]
-        values = []
-        if feature.int64_list.value:
-          values = feature.int64_list.value
-        elif feature.float_list.value:
-          values = feature.float_list.value
-        tf.logging.info(
-                "%s: %s" % (feature_name, " ".join([str(x) for x in values[:FLAGS.max_seq_length]])))
+    #  for feature_name in features.keys():
+    #    feature = features[feature_name]
+    #    values = []
+    #    if feature.int64_list.value:
+    #      values = feature.int64_list.value
+    #    elif feature.float_list.value:
+    #      values = feature.float_list.value
+    #    tf.logging.info(
+    #            "%s: %s" % (feature_name, " ".join([str(x) for x in values[:FLAGS.max_seq_length]])))
 
   for writer in writers:
     writer.close()
@@ -398,115 +400,6 @@ def create_coref_candidate_sets(mention, all_mentions, tfidf_candidates,
   neg_cand = neg_cand[:num_cands]
 
   return Instance(mention, pos_cand, neg_cand)
-
-
-def create_instances_from_document(
-    mention, all_documents, tfidf_candidates, tokenizer, max_seq_length,
-    vocab_words, rng, is_training=True):
-  """Creates `TrainingInstance`s for a single document."""
-
-  # Account for [CLS], [SEP]
-  max_num_tokens = max_seq_length - 3
-
-  mention_length = int(max_num_tokens/2)
-  cand_length = max_num_tokens - mention_length
-
-  context_document_id = mention['context_document_id']
-  label_document_id = mention['label_document_id']
-  start_index = mention['start_index']
-  end_index = mention['end_index']
-
-  context_document = all_documents[context_document_id]['text']
-
-  context_tokens = context_document.split()
-  extracted_mention = context_tokens[start_index: end_index+1]
-  extracted_mention = ' '.join(extracted_mention)
-  assert extracted_mention == mention['text']
-  mention_text_tokenized = tokenizer.tokenize(mention['text'])
-
-  mention_context, mention_start, mention_end = get_context_tokens(
-      context_tokens, start_index, end_index, mention_length, tokenizer)
-
-  mention_id = mention['mention_id']
-  assert mention_id in tfidf_candidates
-  cand_document_ids = tfidf_candidates[mention_id]
-  if not cand_document_ids:
-    return None
-
-  num_cands = FLAGS.num_cands
-  if not is_training:
-    cand_document_ids = cand_document_ids[:num_cands]
-
-  if not is_training and label_document_id not in cand_document_ids:
-    return None
-
-  cand_document_ids = [cand for cand in cand_document_ids if cand != label_document_id]
-  assert label_document_id not in cand_document_ids
-
-  while len(cand_document_ids) < num_cands:
-    cand_document_ids.extend(cand_document_ids)
-
-  cand_document_ids.insert(0, label_document_id)
-
-  cand_document_ids = cand_document_ids[:num_cands]
-  assert len(cand_document_ids) == num_cands
-
-  label_id = None
-  for i, document in enumerate(cand_document_ids):
-    if document == label_document_id:
-      assert label_id == None
-      label_id = i
-
-  assert label_id == 0
-
-  instance_tokens = []
-  instance_input_ids = []
-  instance_segment_ids = []
-  instance_input_mask = []
-  instance_mention_id = []
-
-  for cand_document_id in cand_document_ids:
-    tokens_a = mention_context
-    cand_document = all_documents[cand_document_id]['text']
-    cand_document_truncate = ' '.join(cand_document.split()[:cand_length])
-    cand_document = tokenizer.tokenize(cand_document_truncate)
-    tokens_b = cand_document[:cand_length]
-
-    tokens = ['[CLS]'] + tokens_a + ['[SEP]'] + tokens_b + ['[SEP]']
-
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
-    segment_ids = [0]*(len(tokens_a) + 2) + [1]*(len(tokens_b) + 1)
-    input_mask = [1]*len(input_ids)
-    mention_id = [0]*len(input_ids)
-
-    # Update these indices to take [CLS] into account
-    new_mention_start = mention_start + 1
-    new_mention_end = mention_end + 1
-
-    assert tokens[new_mention_start: new_mention_end+1] == mention_text_tokenized
-    for t in range(new_mention_start, new_mention_end+1):
-      mention_id[t] = 1
-
-    assert len(input_ids) <= max_seq_length
-
-    tokens = tokens + ['<pad>'] * (max_seq_length - len(tokens))
-    instance_tokens.extend(tokens)
-    instance_input_ids.extend(pad_sequence(input_ids, max_seq_length))
-    instance_segment_ids.extend(pad_sequence(segment_ids, max_seq_length))
-    instance_input_mask.extend(pad_sequence(input_mask, max_seq_length))
-    instance_mention_id.extend(pad_sequence(mention_id, max_seq_length))
-
-  instance = TrainingInstance(
-      tokens=instance_tokens,
-      input_ids=instance_input_ids,
-      input_mask=instance_input_mask,
-      segment_ids=instance_segment_ids,
-      label_id=label_id,
-      mention_id=instance_mention_id,
-      mention_guid=mention['mention_id'],
-      cand_guids=cand_document_ids)
-
-  return instance
 
 
 def main(_):
