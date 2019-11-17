@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+from collections import defaultdict
 import json
 import math
 import random
@@ -119,23 +120,31 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
   total_written = 0
   for (inst_index, instance) in enumerate(instances):
 
-    input_ids = instance.input_ids
-    input_mask = instance.input_mask
-    segment_ids = instance.segment_ids
-    mention_id = instance.mention_id
-    label_id = instance.label_id
+    input_ids = []
+    input_mask = []
+    segment_ids = []
+    mention_id = []
 
-    assert len(input_ids) == max_seq_length*num_cands
-    assert len(input_mask) == max_seq_length*num_cands
-    assert len(segment_ids) == max_seq_length*num_cands
-    assert len(mention_id) == max_seq_length*num_cands
+    mention_objects = ([instance.mention['object']]
+                       + [m['object'] for m in instance.pos_cand]
+                       + [m['object'] for m in instance.neg_cand])
+
+    for obj in mention_objects:
+      input_ids.extend(obj.input_ids)
+      input_mask.extend(obj.input_ids)
+      segment_ids.extend(obj.input_ids)
+      mention_id.extend(obj.input_ids)
+
+    assert len(input_ids) == max_seq_length * (2*FLAGS.num_cands + 1)
+    assert len(input_mask) == max_seq_length * (2*FLAGS.num_cands + 1)
+    assert len(segment_ids) == max_seq_length * (2*FLAGS.num_cands + 1)
+    assert len(mention_id) == max_seq_length * (2*FLAGS.num_cands + 1)
 
     features = collections.OrderedDict()
     features["input_ids"] = create_int_feature(input_ids)
     features["input_mask"] = create_int_feature(input_mask)
     features["segment_ids"] = create_int_feature(segment_ids)
     features["mention_id"] = create_int_feature(mention_id)
-    features["label_id"] = create_int_feature([label_id])
 
     tf_example = tf.train.Example(features=tf.train.Features(feature=features))
 
@@ -206,6 +215,10 @@ def create_training_instances(document_files, mentions_files, tokenizer, max_seq
       d = json.loads(line)
       tfidf_candidates[d['mention_id']] = d['tfidf_candidates']
 
+  entity2mention = defaultdict(list)
+  for mention in mentions:
+    entity2mention[mention['label_document_id']].append(mention)
+
   vocab_words = list(tokenizer.vocab.keys())
 
   if FLAGS.split_by_domain:
@@ -218,17 +231,11 @@ def create_training_instances(document_files, mentions_files, tokenizer, max_seq
                           max_seq_length, vocab_words, rng,
                           is_training=is_training)
     if i > 0 and i % 1000 == 0:
-      tf.logging.info("Instance: %d" % i)
-
-  embed()
-  exit()
-
+      tf.logging.info("Mention: %d" % i)
 
   for i, mention in enumerate(mentions):
-    instance = create_instances_from_document(
-            mention, documents, tfidf_candidates, tokenizer, max_seq_length,
-            vocab_words, rng, is_training=is_training)
-
+    instance = create_coref_candidate_sets(
+                      mention, mentions, tfidf_candidates, entity2mention)
     if instance:
       if FLAGS.split_by_domain:
         corpus = mention['corpus']
@@ -350,96 +357,47 @@ def create_mention_object(
                               segment_ids=segment_ids,
                               mention_id=mention_id)
 
-  return
 
-  embed()
-  exit()
-
-
-
-
-
-  ########################################################################
-
-  cand_document_ids = tfidf_candidates[mention_id]
-  if not cand_document_ids:
-    return
-
+def create_coref_candidate_sets(mention, all_mentions, tfidf_candidates,
+                                entity2mention):
   num_cands = FLAGS.num_cands
-  if not is_training:
-    cand_document_ids = cand_document_ids[:num_cands]
-  
-  ## NOTE: this is commented out because we actually want these in our experiments
-  #if not is_training and label_document_id not in cand_document_ids:
-  #  return
+  pos_cand, neg_cand = [], []
+  mention_label = mention['label_document_id']
 
-  cand_document_ids = [cand for cand in cand_document_ids if cand != label_document_id]
-  assert label_document_id not in cand_document_ids
+  ### Create the positive candidate set
+  # grab other mentions that have the same ground truth entity and have the
+  # correct entity in their own candidate set
+  pos_cand = [
+      m for m in entity2mention[mention_label] 
+          if (mention_label in tfidf_candidates[m['mention_id']]
+              and m is not mention)
+  ]
 
-  while len(cand_document_ids) < num_cands:
-    cand_document_ids.extend(cand_document_ids)
+  # if none of the above exist, grab other mentions that have the same ground
+  # truth entity but do not have the correct entity in their own candidate set
+  if len(pos_cand) == 0:
+    pos_cand = [m for m in entity2mention[mention_label]]
 
-  cand_document_ids.insert(0, label_document_id)
+  while len(pos_cand) < num_cands:
+    pos_cand.extend(pos_cand)
 
-  cand_document_ids = cand_document_ids[:num_cands]
-  assert len(cand_document_ids) == num_cands
+  pos_cand = pos_cand[:num_cands]
 
-  label_id = None
-  for i, document in enumerate(cand_document_ids):
-    if document == label_document_id:
-      assert label_id == None
-      label_id = i
+  ### Create the negative candidate set
+  neg_cand = random.choices(all_mentions, k=num_cands)
+  neg_cand = [m for m in neg_cand
+                if (m not in pos_cand and m is not mention)]
+  neg_cand = neg_cand[:num_cands//2]
+  neg_cand.extend([m for m in random.sample(all_mentions, k=len(all_mentions))
+    if (m is not mention 
+    and m['label_document_id'] in tfidf_candidates[mention['mention_id']])])
 
-  assert label_id == 0
+  while len(neg_cand) < num_cands:
+    neg_cand.extend(neg_cand)
 
-  instance_tokens = []
-  instance_input_ids = []
-  instance_segment_ids = []
-  instance_input_mask = []
-  instance_mention_id = []
+  neg_cand = neg_cand[:num_cands]
 
-  for cand_document_id in cand_document_ids:
-    tokens_a = mention_context
-    cand_document = all_documents[cand_document_id]['text']
-    cand_document_truncate = ' '.join(cand_document.split()[:cand_length])
-    cand_document = tokenizer.tokenize(cand_document_truncate)
-    tokens_b = cand_document[:cand_length]
-
-    tokens = ['[CLS]'] + tokens_a + ['[SEP]'] + tokens_b + ['[SEP]']
-
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
-    segment_ids = [0]*(len(tokens_a) + 2) + [1]*(len(tokens_b) + 1)
-    input_mask = [1]*len(input_ids)
-    mention_id = [0]*len(input_ids)
-
-    # Update these indices to take [CLS] into account
-    new_mention_start = mention_start + 1
-    new_mention_end = mention_end + 1
-
-    assert tokens[new_mention_start: new_mention_end+1] == mention_text_tokenized
-    for t in range(new_mention_start, new_mention_end+1):
-      mention_id[t] = 1
-
-    assert len(input_ids) <= max_seq_length
-
-    tokens = tokens + ['<pad>'] * (max_seq_length - len(tokens))
-    instance_tokens.extend(tokens)
-    instance_input_ids.extend(pad_sequence(input_ids, max_seq_length))
-    instance_segment_ids.extend(pad_sequence(segment_ids, max_seq_length))
-    instance_input_mask.extend(pad_sequence(input_mask, max_seq_length))
-    instance_mention_id.extend(pad_sequence(mention_id, max_seq_length))
-
-  instance = TrainingInstance(
-      tokens=instance_tokens,
-      input_ids=instance_input_ids,
-      input_mask=instance_input_mask,
-      segment_ids=instance_segment_ids,
-      label_id=label_id,
-      mention_id=instance_mention_id,
-      mention_guid=mention['mention_id'],
-      cand_guids=cand_document_ids)
-
-  return instance
+  return Instance(mention, pos_cand, neg_cand)
 
 
 def create_instances_from_document(
