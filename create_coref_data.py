@@ -23,6 +23,7 @@ from collections import defaultdict
 import json
 import math
 import random
+import struct
 import tensorflow as tf
 from bert import tokenization
 
@@ -140,13 +141,16 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     assert len(segment_ids) == max_seq_length * (2*FLAGS.num_cands + 1)
     assert len(mention_id) == max_seq_length * (2*FLAGS.num_cands + 1)
 
+    uid_bytes = bytes(instance.mention["mention_id"], "utf-8")
+    uid_bytes = list(struct.unpack('=LLLL', uid_bytes)) # will be a list of 4, 32-bit integers
+    ## NOTE: to convert back to byte string `struct.pack("=LLLL", *uid_bytes)`
+
     features = collections.OrderedDict()
     features["input_ids"] = create_int_feature(input_ids)
     features["input_mask"] = create_int_feature(input_mask)
     features["segment_ids"] = create_int_feature(segment_ids)
     features["mention_id"] = create_int_feature(mention_id)
-    features["uid"] = tf.train.Feature(bytes_list=tf.train.BytesList(
-        value=[bytes(instance.mention["mention_id"], "utf-8")]))
+    features["uid"] = create_int_feature(uid_bytes)
 
     tf_example = tf.train.Example(features=tf.train.Features(feature=features))
 
