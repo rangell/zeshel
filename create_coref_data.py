@@ -132,9 +132,9 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
 
     for obj in mention_objects:
       input_ids.extend(obj.input_ids)
-      input_mask.extend(obj.input_ids)
-      segment_ids.extend(obj.input_ids)
-      mention_id.extend(obj.input_ids)
+      input_mask.extend(obj.input_mask)
+      segment_ids.extend(obj.segment_ids)
+      mention_id.extend(obj.mention_id)
 
     assert len(input_ids) == max_seq_length * (2*FLAGS.num_cands + 1)
     assert len(input_mask) == max_seq_length * (2*FLAGS.num_cands + 1)
@@ -357,6 +357,7 @@ def create_mention_object(
   input_ids = pad_sequence(input_ids, max_seq_length)
   input_mask = pad_sequence(input_mask, max_seq_length)
   segment_ids = pad_sequence(segment_ids, max_seq_length)
+  mention_id = pad_sequence(mention_id, max_seq_length)
   mention['object'] = Mention(tokens=tokens,
                               input_ids=input_ids,
                               input_mask=input_mask,
