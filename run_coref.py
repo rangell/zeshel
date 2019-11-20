@@ -468,7 +468,8 @@ def main(_):
     tf.logging.info("***** Running prediction*****")
     tf.logging.info("  Batch size = %d", FLAGS.eval_batch_size)
 
-    predict_drop_remainder = True if FLAGS.use_tpu else False
+    #predict_drop_remainder = True if FLAGS.use_tpu else False
+    predict_drop_remainder = False
     predict_input_fn = file_based_input_fn_builder(
         input_file=predict_file,
         num_cands=FLAGS.num_cands,
