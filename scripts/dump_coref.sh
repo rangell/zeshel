@@ -6,7 +6,7 @@ REPS_FILE=${EXPTS_DIR}/cereal/train.pkl
 USE_TPU=true
 TPU_NAME=rangell
 
-domain='test/yugioh'
+domain='train/train'
 
 EXP_NAME=BERT_coref
 INIT=$BERT_BASE_DIR/bert_model.ckpt 
