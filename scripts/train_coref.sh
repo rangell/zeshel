@@ -2,7 +2,6 @@ STORAGE_BUCKET=gs://linking-data
 BERT_BASE_DIR=${STORAGE_BUCKET}/uncased_L-12_H-768_A-12
 EXPTS_DIR=${STORAGE_BUCKET}/tmp
 TFRecords=${STORAGE_BUCKET}/tmp/TFRecords/coref_mentions/train
-REPS_FILE=${EXPTS_DIR}/cereal/reps.pkl
 USE_TPU=true
 TPU_NAME=rangell
 
@@ -21,7 +20,6 @@ python3 run_coref.py \
   --learning_rate=2e-5 \
   --num_train_epochs=12.0 \
   --num_cands=16 \
-  --output_rep_file=$REPS_FILE \
   --output_dir=$EXPTS_DIR/$EXP_NAME \
   --use_tpu=$USE_TPU \
   --tpu_name=$TPU_NAME

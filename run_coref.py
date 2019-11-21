@@ -107,7 +107,7 @@ flags.DEFINE_float("learning_rate", 5e-5, "The initial learning rate for Adam.")
 flags.DEFINE_float("num_train_epochs", 3.0,
                    "Total number of training epochs to perform.")
 
-flags.DEFINE_float("margin", 0.2,
+flags.DEFINE_float("margin", 0.0,
                    "Margin for max-margin loss.")
 
 flags.DEFINE_float(
@@ -115,10 +115,10 @@ flags.DEFINE_float(
     "Proportion of training to perform linear learning rate warmup for. "
     "E.g., 0.1 = 10% of training.")
 
-flags.DEFINE_integer("save_checkpoints_steps", 1000,
+flags.DEFINE_integer("save_checkpoints_steps", 250,
                      "How often to save the model checkpoint.")
 
-flags.DEFINE_integer("iterations_per_loop", 1000,
+flags.DEFINE_integer("iterations_per_loop", 250,
                      "How many steps to make in each estimator call.")
 
 flags.DEFINE_bool("use_tpu", False, "Whether to use TPU or GPU/CPU.")
@@ -251,10 +251,10 @@ def create_zeshel_model(bert_config, output_dim, num_cands, margin,
     pos_scores = tf.reduce_sum(tf.multiply(pos_reps, mention_rep), axis=-1)
     neg_scores = tf.reduce_sum(tf.multiply(neg_reps, mention_rep), axis=-1)
 
-    #max_pos_score = tf.reduce_max(pos_scores, axis=-1)
-    #max_neg_score = tf.reduce_max(neg_scores, axis=-1)
-    max_pos_score = tf.reduce_logsumexp(pos_scores, axis=-1)
-    max_neg_score = tf.reduce_logsumexp(neg_scores, axis=-1)
+    max_pos_score = tf.reduce_max(pos_scores, axis=-1)
+    max_neg_score = tf.reduce_max(neg_scores, axis=-1)
+    #max_pos_score = tf.reduce_logsumexp(pos_scores, axis=-1)
+    #max_neg_score = tf.reduce_logsumexp(neg_scores, axis=-1)
 
     #per_example_loss = tf.nn.relu(max_neg_score + margin - max_pos_score)
     per_example_loss = tf.nn.softplus(max_neg_score + margin - max_pos_score)
