@@ -1,12 +1,12 @@
 STORAGE_BUCKET=gs://linking-data
 BERT_BASE_DIR=${STORAGE_BUCKET}/uncased_L-12_H-768_A-12
 EXPTS_DIR=${STORAGE_BUCKET}/tmp
-TFRecords=${STORAGE_BUCKET}/tmp/TFRecords/coref_mentions
-REPS_FILE=${EXPTS_DIR}/cereal/train.pkl
+TFRecords=${EXPTS_DIR}/TFRecords/coref_mentions
+REPS_FILE=${EXPTS_DIR}/coref_mention_reps/test.pkl
 USE_TPU=true
 TPU_NAME=rangell
 
-domain='train/train'
+domain='test/test'
 
 EXP_NAME=BERT_coref
 INIT=$BERT_BASE_DIR/bert_model.ckpt 

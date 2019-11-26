@@ -16,9 +16,9 @@ python3 run_coref.py \
   --bert_config_file=$BERT_BASE_DIR/bert_config.json \
   --init_checkpoint=$INIT \
   --max_seq_length=128 \
-  --train_batch_size=32 \
+  --train_batch_size=16 \
   --learning_rate=2e-5 \
-  --num_train_epochs=12.0 \
+  --num_train_epochs=3.0 \
   --num_cands=16 \
   --output_dir=$EXPTS_DIR/$EXP_NAME \
   --use_tpu=$USE_TPU \
