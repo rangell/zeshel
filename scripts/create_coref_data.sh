@@ -29,13 +29,13 @@ mkdir -p $OUTPUT_DIR/{train,val,test}
 #  --documents_file=${val_documents} \
 #  --mentions_file=${MENTIONS}/val.json \
 #  --tfidf_candidates_file=${TFIDF_CANDIDATES}/val.json \
-#  --output_file=${OUTPUT_DIR}/val \
+#  --output_file=${OUTPUT_DIR}/val/val.tfrecord \
 #  --vocab_file=${BERT_BASE_DIR}/vocab.txt \
 #  --do_lower_case=True \
 #  --max_seq_length=128 \
 #  --num_cands=16 \
 #  --is_training=False \
-#  --split_by_domain=True \
+#  --split_by_domain=False \
 #  --random_seed=12345
 #
 #exit
@@ -63,13 +63,13 @@ python create_coref_data.py \
   --documents_file=$val_documents \
   --mentions_file=$MENTIONS/${split}.json \
 	--tfidf_candidates_file=$TFIDF_CANDIDATES/${split}.json \
-  --output_file=$OUTPUT_DIR/val \
+  --output_file=$OUTPUT_DIR/val/val.tfrecord \
   --vocab_file=$BERT_BASE_DIR/vocab.txt \
   --do_lower_case=True \
   --max_seq_length=128 \
   --num_cands=16 \
   --is_training=False \
-	--split_by_domain=True \
+	--split_by_domain=False \
   --random_seed=12345 &
 
 split="test"
@@ -78,11 +78,11 @@ python create_coref_data.py \
   --documents_file=$test_documents \
   --mentions_file=$MENTIONS/${split}.json \
  	--tfidf_candidates_file=$TFIDF_CANDIDATES/${split}.json \
-  --output_file=$OUTPUT_DIR/test \
+  --output_file=$OUTPUT_DIR/test/test.tfrecord \
   --vocab_file=$BERT_BASE_DIR/vocab.txt \
   --do_lower_case=True \
   --max_seq_length=128 \
   --num_cands=16 \
   --is_training=False \
-	--split_by_domain=True \
+	--split_by_domain=False \
   --random_seed=12345 &

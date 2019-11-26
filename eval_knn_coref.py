@@ -3,25 +3,35 @@ import faiss
 import json
 import numpy as np
 import pickle
+from sklearn.preprocessing import normalize
 from tqdm import tqdm
 
 from IPython import embed
 
 
-REPS_FILE='tmp/cereal/train.pkl'
-MENTIONS_FILE='data/mentions/train.json'
-TFIDF_CANDIDATES='data/tfidf_candidates/train.json'
+REPS_FILE='tmp/cereal/test.pkl'
+MENTIONS_FILE='data/mentions/test.json'
+TFIDF_CANDIDATES='data/tfidf_candidates/test.json'
 
 
 with open(REPS_FILE, 'rb') as f:
-  reps = pickle.load(f)
-  reps = OrderedDict(reps)
+  all_reps = pickle.load(f)
 
 mention2entity = {}
+entity2mention = defaultdict(list)
+corpus_reps = {}
 with open(MENTIONS_FILE, 'r') as f:
   for line in f:
     m = json.loads(line)
-    mention2entity[m['mention_id']] = m['label_document_id']
+
+    uid = m['mention_id']
+    mention2entity[uid] = m['label_document_id']
+    entity2mention[m['label_document_id']].append(uid)
+
+    corpus = m['corpus']
+    if corpus not in corpus_reps.keys():
+      corpus_reps[corpus] = {}
+    corpus_reps[corpus][uid] = all_reps[uid]
 
 tfidf_candidates = {}
 with open(TFIDF_CANDIDATES, 'r') as f:
@@ -30,35 +40,48 @@ with open(TFIDF_CANDIDATES, 'r') as f:
     tfidf_candidates[cand_dict['mention_id']] = cand_dict['tfidf_candidates']
 
 
-uids = list(reps.keys())
-X = np.vstack([x for _, x in reps.items()])
+coref_candidates = {}
+for corpus, reps in corpus_reps.items():
+  print('Computing coref candidates for corpus {}...'.format(corpus))
+  uids = list(reps.keys())
+  X = np.vstack([x for _, x in reps.items()])
 
-# build the kNN index
-index = faiss.IndexFlatL2(X.shape[1])
-index.add(X)
+  # build the kNN index
+  index = faiss.IndexFlatL2(X.shape[1])
+  index.add(X)
 
-# query the index
-print('Querying the index...')
-k = 25
-D, I = index.search(X, k)
-print('Done.')
+  # query the index
+  print('Querying the index...')
+  k = 7
+  D, I = index.search(X, k)
+  print('Done.')
 
-embed()
-exit()
+  # convert indices back to uids
+  for i in range(X.shape[0]):
+    coref_candidates[uids[i]] = [uids[j] for j in I[i]] 
 
-# convert indices back to uids
-coref_candidates = {uids[i] : [uids[j] for j in I[i]] for i in range(X.shape[0])}
+total = float(len(mention2entity.keys()))
 
 # compute hits
-coref_hits = 0
+normal_hits = 0.0
+for m1, e in mention2entity.items():
+  if e in tfidf_candidates[m1]:
+    normal_hits += 1
+
+gt_hits = 0.0
+for m1, e in mention2entity.items():
+  for m2 in entity2mention[e]:
+    if e in tfidf_candidates[m2]:
+      gt_hits += 1
+      break
+
+coref_hits = 0.0
 for m1, e in mention2entity.items():
   for m2 in [m for m in coref_candidates[m1]]:
     if e in tfidf_candidates[m2] or e in tfidf_candidates[m1]:
       coref_hits += 1
       break
 
-
-embed()
-exit()
-
-
+print('Normal Hits: {}, ({}/{})'.format(normal_hits/total, normal_hits, total))
+print('Coref Hits: {}, ({}/{})'.format(coref_hits/total, coref_hits, total))
+print('Ground Truth Coref Hits: {}, ({}/{})'.format(gt_hits/total, gt_hits, total))

@@ -126,6 +126,8 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     input_mask = []
     segment_ids = []
     mention_id = []
+    start_token = []
+    end_token = []
 
     mention_objects = ([instance.mention['object']]
                        + [m['object'] for m in instance.pos_cand]
@@ -136,11 +138,13 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
       input_mask.extend(obj.input_mask)
       segment_ids.extend(obj.segment_ids)
       mention_id.extend(obj.mention_id)
+      start_token.append(obj.mention_id.index(1))
+      end_token.append(len(obj.mention_id) - 1 - obj.mention_id[::-1].index(1))
 
-    assert len(input_ids) == max_seq_length * (2*FLAGS.num_cands + 1)
-    assert len(input_mask) == max_seq_length * (2*FLAGS.num_cands + 1)
-    assert len(segment_ids) == max_seq_length * (2*FLAGS.num_cands + 1)
-    assert len(mention_id) == max_seq_length * (2*FLAGS.num_cands + 1)
+    assert len(input_ids) == max_seq_length * (4*FLAGS.num_cands + 1)
+    assert len(input_mask) == max_seq_length * (4*FLAGS.num_cands + 1)
+    assert len(segment_ids) == max_seq_length * (4*FLAGS.num_cands + 1)
+    assert len(mention_id) == max_seq_length * (4*FLAGS.num_cands + 1)
     
 
     uid_bytes = bytes(instance.mention["mention_id"], "utf-8")
@@ -153,6 +157,8 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     features["segment_ids"] = create_int_feature(segment_ids)
     features["mention_id"] = create_int_feature(mention_id)
     features["uid"] = create_int_feature(uid_bytes)
+    features["start_token"] = create_int_feature(start_token)
+    features["end_token"] = create_int_feature(end_token)
 
     tf_example = tf.train.Example(features=tf.train.Features(feature=features))
 
@@ -376,6 +382,8 @@ def create_coref_candidate_sets(mention, all_mentions, tfidf_candidates,
   pos_cand, neg_cand = [], []
   mention_label = mention['label_document_id']
 
+  corpus_mentions = [m for m in all_mentions if m['corpus'] == mention['corpus']]
+
   ### Create the positive candidate set
   # grab other mentions that have the same ground truth entity and have the
   # correct entity in their own candidate set
@@ -402,22 +410,27 @@ def create_coref_candidate_sets(mention, all_mentions, tfidf_candidates,
   pos_cand = pos_cand[:num_cands]
 
   ### Create the negative candidate set
-  #neg_cand = random.choices(all_mentions, k=num_cands)
-  #neg_cand = [m for m in neg_cand
-  #              if (m not in pos_cand and m is not mention)]
-  #neg_cand = neg_cand[:num_cands//2]
-  #neg_cand.extend([m for m in random.sample(all_mentions, k=len(all_mentions))
+  #hard_negs = [m for m in corpus_mentions 
   #  if (m is not mention 
-  #  and m['label_document_id'] in tfidf_candidates[mention['mention_id']])])
-  
-  neg_cand = random.choices(all_mentions, k=2*num_cands)
-  neg_cand = [m for m in neg_cand
-                if (m not in pos_cand and m is not mention)]
+  #  and m['label_document_id'] in tfidf_candidates[mention['mention_id']]
+  #  and m not in pos_cand)]
 
-  while len(neg_cand) < num_cands:
+  #if len(hard_negs) > int(1.5 * num_cands):
+  #  neg_cand = random.sample(hard_negs, k=int(1.5*num_cands))
+  #else:
+  #  neg_cand = hard_negs
+
+  neg_cand = []
+
+  rand_neg_cand = random.choices(corpus_mentions, k=4*num_cands)
+  neg_cand.extend([m for m in rand_neg_cand
+                    if (m not in pos_cand
+                        and m is not mention)])
+
+  while len(neg_cand) < 3*num_cands:
     neg_cand.extend(neg_cand)
 
-  neg_cand = neg_cand[:num_cands]
+  neg_cand = neg_cand[:3*num_cands]
 
   return Instance(mention, pos_cand, neg_cand)
 
