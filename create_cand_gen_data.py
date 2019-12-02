@@ -89,8 +89,6 @@ class Mention(object):
          for x in self.segment_ids[:FLAGS.max_seq_length]]))
     s += "input_mask: %s\n" % (" ".join([str(x)
          for x in self.input_mask[:FLAGS.max_seq_length]]))
-    s += "mention_id: %s\n" % (" ".join([str(x)
-         for x in self.mention_id[:FLAGS.max_seq_length]]))
     s += "\n"
     return s
 
@@ -186,20 +184,22 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
 
     total_written += 1
 
-    #if inst_index < 20:
-    #  tf.logging.info("*** Example ***")
-    #  tf.logging.info("tokens: %s" % " ".join(
-    #      [tokenization.printable_text(x) for x in instance.tokens[:FLAGS.max_seq_length]]))
+    if inst_index < 20:
+      tf.logging.info("*** Example ***")
+      tf.logging.info("Mention: \n" + str(instance.mention_obj))
+      tf.logging.info("Entity: \n" + str(instance.entity_obj))
+      #tf.logging.info("tokens: %s" % " ".join(
+      #    [tokenization.printable_text(x) for x in instance.tokens[:FLAGS.max_seq_length]]))
 
-    #  for feature_name in features.keys():
-    #    feature = features[feature_name]
-    #    values = []
-    #    if feature.int64_list.value:
-    #      values = feature.int64_list.value
-    #    elif feature.float_list.value:
-    #      values = feature.float_list.value
-    #    tf.logging.info(
-    #            "%s: %s" % (feature_name, " ".join([str(x) for x in values[:FLAGS.max_seq_length]])))
+      #for feature_name in features.keys():
+      #  feature = features[feature_name]
+      #  values = []
+      #  if feature.int64_list.value:
+      #    values = feature.int64_list.value
+      #  elif feature.float_list.value:
+      #    values = feature.float_list.value
+      #  tf.logging.info(
+      #          "%s: %s" % (feature_name, " ".join([str(x) for x in values[:FLAGS.max_seq_length]])))
 
   for writer in writers:
     writer.close()

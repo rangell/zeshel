@@ -9,9 +9,10 @@ from tqdm import tqdm
 from IPython import embed
 
 
-REPS_FILE='tmp/cereal/test.pkl'
+REPS_FILE='tmp/coref_mention_reps/test.pkl'
 MENTIONS_FILE='data/mentions/test.json'
 TFIDF_CANDIDATES='data/tfidf_candidates/test.json'
+OUTPUT_CANDIDATES='tmp/coref_knn_candidates/test.k_3.pkl'
 
 
 with open(REPS_FILE, 'rb') as f:
@@ -52,7 +53,7 @@ for corpus, reps in corpus_reps.items():
 
   # query the index
   print('Querying the index...')
-  k = 7
+  k = 3
   D, I = index.search(X, k)
   print('Done.')
 
@@ -85,3 +86,7 @@ for m1, e in mention2entity.items():
 print('Normal Hits: {}, ({}/{})'.format(normal_hits/total, normal_hits, total))
 print('Coref Hits: {}, ({}/{})'.format(coref_hits/total, coref_hits, total))
 print('Ground Truth Coref Hits: {}, ({}/{})'.format(gt_hits/total, gt_hits, total))
+
+print('\nDumping candidates...')
+with open(OUTPUT_CANDIDATES, 'wb') as f:
+  pickle.dump(coref_candidates, f, pickle.HIGHEST_PROTOCOL)
