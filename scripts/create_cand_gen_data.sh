@@ -24,20 +24,21 @@ test_documents="$(concat ${test_domains[@]})"
 mkdir -p $OUTPUT_DIR/{train,val,test}
 
 
-split='val'
-
-python create_cand_gen_data.py \
-  --documents_file=$val_documents \
-  --mentions_file=$MENTIONS/${split}.json \
-  --output_file=$OUTPUT_DIR/val/val \
-  --vocab_file=$BERT_BASE_DIR/vocab.txt \
-  --do_lower_case=True \
-  --max_seq_length=128 \
-  --is_training=True \
-	--split_by_domain=False \
-  --random_seed=12345
-
-exit
+#split='val'
+#
+#python create_cand_gen_data.py \
+#  --documents_file=$val_documents \
+#  --mentions_file=$MENTIONS/${split}.json \
+#  --output_file=$OUTPUT_DIR/val/val \
+#  --vocab_file=$BERT_BASE_DIR/vocab.txt \
+#  --do_lower_case=True \
+#  --max_seq_length=128 \
+#  --batch_size=64 \
+#  --is_training=True \
+#	--split_by_domain=False \
+#  --random_seed=12345
+#
+#exit
 
 #############################################################################
 

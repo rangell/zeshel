@@ -47,9 +47,6 @@ k = 64
 D, I = entity_index.search(Q, k)
 print('Done.')
 
-embed()
-exit()
-
 knn_candidates = {}
 for i in range(Q.shape[0]):
   knn_candidates[mention_uids[i]] = [entity_uids[j] for j in I[i]]
