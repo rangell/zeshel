@@ -24,6 +24,7 @@ import os
 import pickle
 import struct
 import modeling
+import numpy as np
 import bert
 from bert import optimization
 from bert import tokenization
@@ -108,18 +109,15 @@ flags.DEFINE_float("learning_rate", 5e-5, "The initial learning rate for Adam.")
 flags.DEFINE_float("num_train_epochs", 3.0,
                    "Total number of training epochs to perform.")
 
-flags.DEFINE_float("margin", 1.0,
-                   "Margin for max-margin loss.")
-
 flags.DEFINE_float(
     "warmup_proportion", 0.1,
     "Proportion of training to perform linear learning rate warmup for. "
     "E.g., 0.1 = 10% of training.")
 
-flags.DEFINE_integer("save_checkpoints_steps", 250,
+flags.DEFINE_integer("save_checkpoints_steps", 1000,
                      "How often to save the model checkpoint.")
 
-flags.DEFINE_integer("iterations_per_loop", 250,
+flags.DEFINE_integer("iterations_per_loop", 1000,
                      "How many steps to make in each estimator call.")
 
 flags.DEFINE_bool("use_tpu", False, "Whether to use TPU or GPU/CPU.")
@@ -149,7 +147,7 @@ flags.DEFINE_integer(
     "Only used if `use_tpu` is True. Total number of TPU cores to use.")
 
 flags.DEFINE_integer(
-    "num_train_examples", 50000,
+    "num_train_examples", 800,
     "Number of training examples.")
 
 
@@ -158,13 +156,14 @@ def file_based_input_fn_builder(input_file, num_cands, seq_length, is_training,
   """Creates an `input_fn` closure to be passed to TPUEstimator."""
 
   name_to_features = {
-      "input_ids": tf.FixedLenFeature([4*num_cands+1, seq_length], tf.int64),
-      "input_mask": tf.FixedLenFeature([4*num_cands+1, seq_length], tf.int64),
-      "segment_ids": tf.FixedLenFeature([4*num_cands+1, seq_length], tf.int64),
-      "mention_id": tf.FixedLenFeature([4*num_cands+1, seq_length], tf.int64),
-      "uid": tf.FixedLenFeature([NUM_UID_BYTES], tf.int64),
-      "start_token": tf.FixedLenFeature([4*num_cands+1], tf.int64),
-      "end_token": tf.FixedLenFeature([4*num_cands+1], tf.int64),
+      "mention_input_ids": tf.FixedLenFeature([num_cands, seq_length], tf.int64),
+      "mention_input_mask": tf.FixedLenFeature([num_cands, seq_length], tf.int64),
+      "mention_segment_ids": tf.FixedLenFeature([num_cands, seq_length], tf.int64),
+      "mention_uid": tf.FixedLenFeature([num_cands, NUM_UID_BYTES], tf.int64),
+      "entity_input_ids": tf.FixedLenFeature([num_cands, seq_length], tf.int64),
+      "entity_input_mask": tf.FixedLenFeature([num_cands, seq_length], tf.int64),
+      "entity_segment_ids": tf.FixedLenFeature([num_cands, seq_length], tf.int64),
+      "entity_uid": tf.FixedLenFeature([num_cands, NUM_UID_BYTES], tf.int64),
   }
 
   def _decode_record(record, name_to_features):
@@ -203,34 +202,37 @@ def file_based_input_fn_builder(input_file, num_cands, seq_length, is_training,
   return input_fn
 
 
-def create_zeshel_model(bert_config, output_dim, num_cands, margin,
-        is_training, input_ids, input_mask, segment_ids, mention_ids,
-        start_token, end_token, use_one_hot_embeddings):
+def create_zeshel_model(bert_config, output_dim, num_cands, is_training,
+        mention_input_ids, mention_input_mask, mention_segment_ids,
+        entity_input_ids, entity_input_mask, entity_segment_ids,
+        use_one_hot_embeddings):
   """Creates a classification model."""
 
-  batch_size = input_ids.shape[0].value
-  seq_len = input_ids.shape[-1].value
+  batch_size = mention_input_ids.shape[0].value
+  seq_len = mention_input_ids.shape[-1].value
+
+  input_ids = tf.concat([mention_input_ids, entity_input_ids], 1)
+  segment_ids = tf.concat([mention_segment_ids, entity_segment_ids], 1)
+  input_mask = tf.concat([mention_input_mask, entity_input_mask], 1)
 
   input_ids = tf.reshape(input_ids, [-1, seq_len])
-  segment_ids = tf.reshape(segment_ids, [-1, seq_len])
   input_mask = tf.reshape(input_mask, [-1, seq_len])
-  mention_ids = tf.reshape(mention_ids, [-1, seq_len])
-  start_token = tf.expand_dims(start_token, 2)
-  end_token = tf.expand_dims(end_token, 2)
+  segment_ids = tf.reshape(segment_ids, [-1, seq_len])
 
   model = modeling.BertModel(
       config=bert_config,
       is_training=is_training,
       input_ids=input_ids,
       input_mask=input_mask,
-      mention_ids=mention_ids,
       token_type_ids=segment_ids,
       use_one_hot_embeddings=use_one_hot_embeddings)
 
   output_layer = model.get_pooled_output()
-  output_layer = tf.reshape(output_layer, [batch_size, 4*num_cands+1, -1])
+  output_layer = tf.reshape(output_layer, [batch_size, 2*num_cands, -1])
 
   hidden_size = output_layer.shape[-1].value
+
+  output_dim = 128
   
   output_weights = tf.get_variable(
       "output_weights", [output_dim, hidden_size],
@@ -246,30 +248,34 @@ def create_zeshel_model(bert_config, output_dim, num_cands, margin,
 
     reps = tf.matmul(output_layer, output_weights, transpose_b=True)
     reps = tf.nn.bias_add(reps, output_bias)
+
     reps = tf.nn.l2_normalize(reps, axis=-1)
 
-    mention_rep = reps[:, 0:1, :]
-    pos_reps = reps[:, 1:num_cands+1, :]
-    neg_reps = reps[:, num_cands+1:4*num_cands+1, :]
+    mention_reps = tf.reshape(reps[:, :num_cands, :], [batch_size, num_cands, output_dim])
+    entity_reps = tf.reshape(reps[:, num_cands:, :], [batch_size, num_cands, output_dim])
 
-    pos_scores = tf.reduce_sum(tf.multiply(pos_reps, mention_rep), axis=-1)
-    neg_scores = tf.reduce_sum(tf.multiply(neg_reps, mention_rep), axis=-1)
+    scores = tf.matmul(mention_reps, entity_reps, transpose_b=True)
+    pos_scores = tf.linalg.diag_part(scores)
 
-    max_pos_score = tf.reduce_max(pos_scores, axis=-1)
-    max_neg_score = tf.reduce_max(neg_scores, axis=-1)
+    no_diag_mask = np.ones(batch_size * num_cands**2, dtype=np.bool).reshape(batch_size, num_cands, num_cands)
+    no_diag_mask[:, np.arange(num_cands), np.arange(num_cands)] = False
 
-    per_example_loss = tf.nn.relu(max_neg_score + margin - max_pos_score)
+    scores_no_diag = tf.boolean_mask(scores, no_diag_mask)
+
+    per_example_loss = (tf.reduce_logsumexp(scores_no_diag, axis=-1)) + 1.0 - pos_scores
 
     loss = tf.reduce_mean(per_example_loss)
 
     return (loss,
             per_example_loss,
-            tf.squeeze(mention_rep, axis=[1]))
+            mention_reps,
+            entity_reps,
+            scores)
 
 
 def model_fn_builder(bert_config, init_checkpoint, learning_rate,
                      num_train_steps, num_warmup_steps, output_dim,
-                     num_cands, margin, use_tpu, use_one_hot_embeddings):
+                     num_cands, use_tpu, use_one_hot_embeddings):
   """Returns `model_fn` closure for TPUEstimator."""
 
   def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
@@ -279,19 +285,21 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
     for name in sorted(features.keys()):
       tf.logging.info("  name = %s, shape = %s" % (name, features[name].shape))
 
-    input_ids = features["input_ids"]
-    input_mask = features["input_mask"]
-    segment_ids = features["segment_ids"]
-    mention_ids = features["mention_id"]
-    uids = features["uid"]
-    start_token = features["start_token"]
-    end_token = features["end_token"]
+    mention_input_ids = features["mention_input_ids"]
+    mention_input_mask = features["mention_input_mask"]
+    mention_segment_ids = features["mention_segment_ids"]
+    mention_uids = features["mention_uid"]
+    entity_input_ids = features["entity_input_ids"]
+    entity_input_mask = features["entity_input_mask"]
+    entity_segment_ids = features["entity_segment_ids"]
+    entity_uids = features["entity_uid"]
 
     is_training = (mode == tf.estimator.ModeKeys.TRAIN)
 
-    (total_loss, per_example_loss, mention_rep) = create_zeshel_model(
-        bert_config, output_dim, num_cands, margin, is_training, input_ids,
-        input_mask, segment_ids, mention_ids, start_token, end_token,
+    (total_loss, per_example_loss, mention_rep, entity_rep, scores) = create_zeshel_model(
+        bert_config, output_dim, num_cands, is_training,
+        mention_input_ids, mention_input_mask, mention_segment_ids,
+        entity_input_ids, entity_input_mask, entity_segment_ids,
         use_one_hot_embeddings)
 
     tvars = tf.trainable_variables()
@@ -337,7 +345,9 @@ def model_fn_builder(bert_config, init_checkpoint, learning_rate,
     else:
       output_spec = tf.contrib.tpu.TPUEstimatorSpec(
           mode=mode,
-          predictions={"uid": uids, "mention_rep": mention_rep},
+          predictions={"mention_uid": mention_uids, "mention_rep": mention_rep,
+                       "entity_uid": entity_uids, "entity_rep": entity_rep,
+                       "scores": scores},
           loss=total_loss,
           scaffold_fn=scaffold_fn)
     return output_spec
@@ -398,7 +408,6 @@ def main(_):
       num_warmup_steps=num_warmup_steps,
       output_dim=FLAGS.output_dim,
       num_cands=FLAGS.num_cands,
-      margin=FLAGS.margin,
       use_tpu=FLAGS.use_tpu,
       use_one_hot_embeddings=FLAGS.use_tpu)
 
@@ -483,17 +492,20 @@ def main(_):
 
     result = estimator.predict(input_fn=predict_input_fn)
 
-    embed()
-    exit()
-
     mention_reps = {}
+    entity_reps = {}
     for prediction in result:
-      uid = struct.pack("=LLLL", *list(prediction["uid"])).decode("utf-8")
-      mention_reps[uid] = prediction["mention_rep"]
+      for i in range(FLAGS.num_cands):
+        mention_uid = struct.pack("=LLLL", *list(prediction["mention_uid"][i])).decode("utf-8")
+        mention_reps[mention_uid] = prediction["mention_rep"][i]
+        entity_uid = struct.pack("=LLLL", *list(prediction["entity_uid"][i])).decode("utf-8")
+        entity_reps[entity_uid] = prediction["entity_rep"][i]
+
+    reps = {'entity_reps': entity_reps, 'mention_reps': mention_reps}
 
     output_rep_file = FLAGS.output_rep_file
     with tf.gfile.GFile(output_rep_file, "wb") as f:
-        pickle.dump(mention_reps, f, pickle.HIGHEST_PROTOCOL)
+        pickle.dump(reps, f, pickle.HIGHEST_PROTOCOL)
 
 
 if __name__ == "__main__":
