@@ -60,7 +60,7 @@ flags.DEFINE_bool(
 
 flags.DEFINE_integer("max_seq_length", 128, "Maximum sequence length.")
 
-flags.DEFINE_integer("num_cands", 64, "Number of entity candidates.")
+flags.DEFINE_integer("batch_size", 64, "Number of mention-entity pairs in a batch.")
 
 flags.DEFINE_integer("random_seed", 12345, "Random seed for data generation.")
 
@@ -72,12 +72,14 @@ class Mention(object):
                input_ids,
                input_mask,
                segment_ids,
-               uid):
+               uid,
+               label_doc_uid):
     self.tokens = tokens
     self.input_ids = input_ids
     self.input_mask = input_mask
     self.segment_ids = segment_ids
     self.uid = uid
+    self.label_doc_uid = label_doc_uid
 
   def __str__(self):
     s = ""
@@ -89,8 +91,6 @@ class Mention(object):
          for x in self.segment_ids[:FLAGS.max_seq_length]]))
     s += "input_mask: %s\n" % (" ".join([str(x)
          for x in self.input_mask[:FLAGS.max_seq_length]]))
-    s += "mention_id: %s\n" % (" ".join([str(x)
-         for x in self.mention_id[:FLAGS.max_seq_length]]))
     s += "\n"
     return s
 
@@ -134,7 +134,7 @@ class TrainingInstance(object):
 
 
 def write_instance_to_example_files(instances, tokenizer, max_seq_length,
-                                    num_cands, output_files):
+                                    batch_size, output_files, is_training):
   """Create TF example files from `TrainingInstance`s."""
   writers = []
   for output_file in output_files:
@@ -142,64 +142,114 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
 
   writer_index = 0
 
+  # shuffle the instances before we batch them
+  random.shuffle(instances)
+
+  if len(instances) % batch_size != 0:
+    num_batches = len(instances) // batch_size + 1
+    instances.extend(instances[:batch_size])
+    instances = instances[:num_batches * batch_size]
+
+  batched_instances = [instances[i*batch_size:(i+1)*batch_size]
+                        for i in range(len(instances) // batch_size)]
+
   total_written = 0
-  for (inst_index, instance) in enumerate(instances):
 
-    mention_obj = instance.mention_obj
-    entity_obj = instance.entity_obj
+  for batch_index, batch in enumerate(batched_instances):
 
-    mention_input_ids = mention_obj.input_ids
-    mention_input_mask = mention_obj.input_mask
-    mention_segment_ids = mention_obj.segment_ids
-    # will be a list of 4, 32-bit integers
-    mention_uid_bytes = bytes(mention_obj.uid, "utf-8")
-    mention_uid_bytes = list(struct.unpack('=LLLL', mention_uid_bytes)) 
+    batch_mention_input_ids = []
+    batch_mention_input_mask = []
+    batch_mention_segment_ids = []
+    batch_mention_uid_bytes = []
+    batch_entity_input_ids = []
+    batch_entity_input_mask = []
+    batch_entity_segment_ids = []
+    batch_entity_uid_bytes = []
 
-    entity_input_ids = entity_obj.input_ids
-    entity_input_mask = entity_obj.input_mask
-    entity_segment_ids = entity_obj.segment_ids
-    # will be a list of 4, 32-bit integers
-    entity_uid_bytes = bytes(entity_obj.uid, "utf-8")
-    entity_uid_bytes = list(struct.unpack('=LLLL', entity_uid_bytes)) 
+    for inst_index, instance in enumerate(batch):
+      mention_obj = instance.mention_obj
+      entity_obj = instance.entity_obj
 
-    assert len(mention_input_ids) == max_seq_length
-    assert len(mention_input_mask) == max_seq_length
-    assert len(mention_segment_ids) == max_seq_length
-    assert len(entity_input_ids) == max_seq_length
-    assert len(entity_input_mask) == max_seq_length
-    assert len(entity_segment_ids) == max_seq_length
+      mention_input_ids = mention_obj.input_ids
+      mention_input_mask = mention_obj.input_mask
+      mention_segment_ids = mention_obj.segment_ids
+      # will be a list of 4, 32-bit integers
+      mention_uid_bytes = bytes(mention_obj.uid, "utf-8")
+      mention_uid_bytes = list(struct.unpack('=LLLL', mention_uid_bytes)) 
+      assert mention_obj.uid == struct.pack("=LLLL", *mention_uid_bytes).decode("utf-8")
 
+      entity_input_ids = entity_obj.input_ids
+      entity_input_mask = entity_obj.input_mask
+      entity_segment_ids = entity_obj.segment_ids
+      # will be a list of 4, 32-bit integers
+      entity_uid_bytes = bytes(entity_obj.uid, "utf-8")
+      entity_uid_bytes = list(struct.unpack('=LLLL', entity_uid_bytes)) 
+      assert entity_obj.uid == struct.pack("=LLLL", *entity_uid_bytes).decode("utf-8")
+
+      if is_training:
+        assert mention_obj.label_doc_uid == entity_obj.uid
+
+      assert len(mention_input_ids) == max_seq_length
+      assert len(mention_input_mask) == max_seq_length
+      assert len(mention_segment_ids) == max_seq_length
+      assert len(entity_input_ids) == max_seq_length
+      assert len(entity_input_mask) == max_seq_length
+      assert len(entity_segment_ids) == max_seq_length
+
+      batch_mention_input_ids.extend(mention_input_ids)
+      batch_mention_input_mask.extend(mention_input_mask)
+      batch_mention_segment_ids.extend(mention_segment_ids)
+      batch_mention_uid_bytes.extend(mention_uid_bytes)
+      batch_entity_input_ids.extend(entity_input_ids)
+      batch_entity_input_mask.extend(entity_input_mask)
+      batch_entity_segment_ids.extend(entity_segment_ids)
+      batch_entity_uid_bytes.extend(entity_uid_bytes)
+
+      if batch_index < 20 and inst_index < 1:
+        tf.logging.info("*** Example ***")
+        tf.logging.info("Mention: \n" + str(instance.mention_obj))
+        tf.logging.info("Entity: \n" + str(instance.entity_obj))
+
+      total_written += 1
+
+    assert len(batch_mention_input_ids) == batch_size*max_seq_length
+    assert len(batch_mention_input_mask) == batch_size*max_seq_length
+    assert len(batch_mention_segment_ids) == batch_size*max_seq_length
+    assert len(batch_entity_input_ids) == batch_size*max_seq_length
+    assert len(batch_entity_input_mask) == batch_size*max_seq_length
+    assert len(batch_entity_segment_ids) == batch_size*max_seq_length
+    
     features = collections.OrderedDict()
-    features["mention_input_ids"] = create_int_feature(mention_input_ids)
-    features["mention_input_mask"] = create_int_feature(mention_input_mask)
-    features["mention_segment_ids"] = create_int_feature(mention_segment_ids)
-    features["mention_uid"] = create_int_feature(mention_uid_bytes)
-    features["entity_input_ids"] = create_int_feature(entity_input_ids)
-    features["entity_input_mask"] = create_int_feature(entity_input_mask)
-    features["entity_segment_ids"] = create_int_feature(entity_segment_ids)
-    features["entity_uid"] = create_int_feature(entity_uid_bytes)
+    features["mention_input_ids"] = create_int_feature(batch_mention_input_ids)
+    features["mention_input_mask"] = create_int_feature(batch_mention_input_mask)
+    features["mention_segment_ids"] = create_int_feature(batch_mention_segment_ids)
+    features["mention_uid"] = create_int_feature(batch_mention_uid_bytes)
+    features["entity_input_ids"] = create_int_feature(batch_entity_input_ids)
+    features["entity_input_mask"] = create_int_feature(batch_entity_input_mask)
+    features["entity_segment_ids"] = create_int_feature(batch_entity_segment_ids)
+    features["entity_uid"] = create_int_feature(batch_entity_uid_bytes)
 
     tf_example = tf.train.Example(features=tf.train.Features(feature=features))
 
     writers[writer_index].write(tf_example.SerializeToString())
     writer_index = (writer_index + 1) % len(writers)
 
-    total_written += 1
-
     #if inst_index < 20:
     #  tf.logging.info("*** Example ***")
-    #  tf.logging.info("tokens: %s" % " ".join(
-    #      [tokenization.printable_text(x) for x in instance.tokens[:FLAGS.max_seq_length]]))
+    #  tf.logging.info("Mention: \n" + str(instance.mention_obj))
+    #  tf.logging.info("Entity: \n" + str(instance.entity_obj))
+    #  #tf.logging.info("tokens: %s" % " ".join(
+    #  #    [tokenization.printable_text(x) for x in instance.tokens[:FLAGS.max_seq_length]]))
 
-    #  for feature_name in features.keys():
-    #    feature = features[feature_name]
-    #    values = []
-    #    if feature.int64_list.value:
-    #      values = feature.int64_list.value
-    #    elif feature.float_list.value:
-    #      values = feature.float_list.value
-    #    tf.logging.info(
-    #            "%s: %s" % (feature_name, " ".join([str(x) for x in values[:FLAGS.max_seq_length]])))
+    #  #for feature_name in features.keys():
+    #  #  feature = features[feature_name]
+    #  #  values = []
+    #  #  if feature.int64_list.value:
+    #  #    values = feature.int64_list.value
+    #  #  elif feature.float_list.value:
+    #  #    values = feature.float_list.value
+    #  #  tf.logging.info(
+    #  #          "%s: %s" % (feature_name, " ".join([str(x) for x in values[:FLAGS.max_seq_length]])))
 
   for writer in writers:
     writer.close()
@@ -388,7 +438,8 @@ def create_mention_obj(mention, all_documents, tokenizer, max_seq_length,
   input_mask = pad_sequence(input_mask, max_seq_length)
 
   mention_obj = Mention(mention_context, input_ids, input_mask,
-                        segment_ids, mention['mention_id'])
+                        segment_ids, mention['mention_id'],
+                        mention['label_document_id'])
   return mention_obj
 
 
@@ -464,13 +515,15 @@ def main(_):
   tf.logging.info("  %s", FLAGS.output_file)
 
   if FLAGS.split_by_domain:
+    assert False
     for corpus in instances:
       output_file = "%s/%s.tfrecord" % (FLAGS.output_file, corpus)
       write_instance_to_example_files(instances[corpus], tokenizer, FLAGS.max_seq_length,
-                                      FLAGS.num_cands, [output_file])
+                                      FLAGS.batch_size, [output_file], FLAGS.is_training)
   else:
     write_instance_to_example_files(instances, tokenizer, FLAGS.max_seq_length,
-                                    FLAGS.num_cands, [FLAGS.output_file])
+                                    FLAGS.batch_size, [FLAGS.output_file],
+                                    FLAGS.is_training)
 
 
 if __name__ == "__main__":
