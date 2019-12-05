@@ -146,10 +146,10 @@ def write_instance_to_example_files(instances, tokenizer, max_seq_length,
     assert len(segment_ids) == max_seq_length * (4*FLAGS.num_cands + 1)
     assert len(mention_id) == max_seq_length * (4*FLAGS.num_cands + 1)
     
-
-    uid_bytes = bytes(instance.mention["mention_id"], "utf-8")
+    num_pad = 16 - len(instance.mention["mention_id"])
+    uid_bytes = bytes(instance.mention["mention_id"] + num_pad * 'n', "utf-8")
     uid_bytes = list(struct.unpack('=LLLL', uid_bytes)) # will be a list of 4, 32-bit integers
-    ## NOTE: to convert back to byte string `struct.pack("=LLLL", *uid_bytes)`
+    ## NOTE: to convert back to byte string `struct.pack("=LLLL", *uid_bytes).decode('utf-8').replace('n', '')`
 
     features = collections.OrderedDict()
     features["input_ids"] = create_int_feature(input_ids)
@@ -219,7 +219,7 @@ def create_training_instances(document_files, mentions_files, tokenizer, max_seq
         line = json.loads(line)
         mentions.append(line)
 
-  tfidf_candidates = {}
+  tfidf_candidates = defaultdict(list)
   with tf.gfile.GFile(FLAGS.tfidf_candidates_file, "r") as reader:
     while True:
       line = tokenization.convert_to_unicode(reader.readline())
@@ -235,8 +235,9 @@ def create_training_instances(document_files, mentions_files, tokenizer, max_seq
 
   entity2mention_w_cand = defaultdict(list)
   for mention in mentions:
-    for cand in tfidf_candidates[mention['mention_id']]:
-      entity2mention_w_cand[cand].append(mention)
+    if mention['mention_id'] in tfidf_candidates.keys():
+      for cand in tfidf_candidates[mention['mention_id']]:
+        entity2mention_w_cand[cand].append(mention)
 
   vocab_words = list(tokenizer.vocab.keys())
 
@@ -345,7 +346,7 @@ def create_mention_object(
       context_tokens, start_index, end_index, mention_length, tokenizer)
 
   mention_id = mention['mention_id']
-  assert mention_id in tfidf_candidates
+  #assert mention_id in tfidf_candidates
 
   tokens = ['[CLS]'] + mention_context + ['[SEP]']
 

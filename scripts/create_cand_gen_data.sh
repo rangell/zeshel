@@ -1,10 +1,10 @@
 STORAGE_BUCKET=.
 BERT_BASE_DIR=${STORAGE_BUCKET}/uncased_L-12_H-768_A-12
 
-ZESHEL_DATA=${STORAGE_BUCKET}/data
+ZESHEL_DATA=${STORAGE_BUCKET}/data/zeshel
 MENTIONS=$ZESHEL_DATA/mentions
 DOCUMENTS=$ZESHEL_DATA/documents
-OUTPUT_DIR=${STORAGE_BUCKET}/tmp/TFRecords/cand_gen
+OUTPUT_DIR=${STORAGE_BUCKET}/tmp/zeshel/TFRecords/cand_gen
 
 train_domains=("american_football" "doctor_who" "fallout" "final_fantasy" "military" "pro_wrestling" "starwars" "world_of_warcraft")
 val_domains=("coronation_street" "elder_scrolls" "ice_hockey" "muppets")

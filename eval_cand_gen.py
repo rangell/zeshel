@@ -9,9 +9,9 @@ from tqdm import tqdm
 from IPython import embed
 
 
-REPS_FILE='tmp/cand_gen_reps/train.pkl'
-MENTIONS_FILE='data/mentions/train.json'
-TFIDF_CANDIDATES='data/tfidf_candidates/train.json'
+REPS_FILE='tmp/zeshel/cand_gen_reps/train.pkl'
+MENTIONS_FILE='data/zeshel/mentions/train.json'
+TFIDF_CANDIDATES='data/zeshel/tfidf_candidates/train.json'
 
 with open(REPS_FILE, 'rb') as f:
   all_reps = pickle.load(f)
